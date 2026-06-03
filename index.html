@@ -1,93 +1,227 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Wetter Rottweil</title>
-<meta name="description" content="Aktuelles Wetter und Prognose für Rottweil über Bright Sky (DWD).">
-<style>
-body{font-family:system-ui,sans-serif;max-width:1100px;margin:auto;padding:20px;background:#f5f7fa}
-.card{background:#fff;border-radius:12px;padding:16px;margin:16px 0;box-shadow:0 2px 8px rgba(0,0,0,.08)}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
-.item{background:#eef4fa;padding:10px;border-radius:8px}
-.small{font-size:.9rem;color:#555}
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wetter Rottweil</title>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f7fa;
+        }
+
+        h1, h2 {
+            color: #333;
+        }
+
+        .card {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .forecast-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 15px;
+        }
+
+        .forecast-item {
+            background: #eef4ff;
+            padding: 15px;
+            border-radius: 10px;
+        }
+
+        .loading {
+            color: #0066cc;
+            font-weight: bold;
+        }
+
+        .error {
+            background: #ffe5e5;
+            color: #b00020;
+            border: 1px solid #ffb3b3;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            white-space: pre-wrap;
+        }
+
+        .hidden {
+            display: none;
+        }
+    </style>
 </head>
 <body>
-<h1>🌤 Wetter in Rottweil</h1>
 
-<div class="card">
-<h2>Aktuelles Wetter</h2>
-<div id="current">Lade Daten...</div>
-</div>
+    <h1>🌤 Wetter in Rottweil</h1>
 
-<div class="card">
-<h2>Prognose (24 Stunden)</h2>
-<div id="forecast" class="grid"></div>
-</div>
+    <div id="loading" class="loading">
+        Wetterdaten werden geladen...
+    </div>
+
+    <div id="errorBox" class="error hidden"></div>
+
+    <div id="currentWeather" class="card hidden">
+        <h2>Aktuelles Wetter</h2>
+
+        <p><strong>Temperatur:</strong> <span id="temperature"></span> °C</p>
+        <p><strong>Wind:</strong> <span id="wind"></span> km/h</p>
+        <p><strong>Luftdruck:</strong> <span id="pressure"></span> hPa</p>
+        <p><strong>Zeitpunkt:</strong> <span id="timestamp"></span></p>
+    </div>
+
+    <div id="forecastSection" class="card hidden">
+        <h2>Vorhersage</h2>
+
+        <div id="forecastGrid" class="forecast-grid"></div>
+    </div>
 
 <script>
 const LAT = 48.1678;
 const LON = 8.6272;
 
+const loading = document.getElementById("loading");
+const errorBox = document.getElementById("errorBox");
+
+function showError(message) {
+    loading.classList.add("hidden");
+
+    errorBox.classList.remove("hidden");
+    errorBox.textContent =
+        "Fehler beim Abrufen der Wetterdaten:\n\n" + message;
+}
+
 async function loadWeather() {
-  try {
-    const currentRes = await fetch(
-      `https://api.brightsky.dev/current_weather?lat=${LAT}&lon=${LON}`
-    );
+    try {
+        // Aktuelles Wetter
+        const currentResponse = await fetch(
+            `https://api.brightsky.dev/current_weather?lat=${LAT}&lon=${LON}`
+        );
 
-    const forecastRes = await fetch(
-      `https://api.brightsky.dev/weather?lat=${LAT}&lon=${LON}`
-    );
+        if (!currentResponse.ok) {
+            throw new Error(
+                `Aktuelles Wetter: HTTP ${currentResponse.status}`
+            );
+        }
 
-    if (!currentRes.ok) {
-      throw new Error("Current Weather HTTP " + currentRes.status);
+        const currentData = await currentResponse.json();
+
+        if (!currentData.weather) {
+            throw new Error(
+                "Aktuelle Wetterdaten fehlen in der API-Antwort."
+            );
+        }
+
+        document.getElementById("temperature").textContent =
+            currentData.weather.temperature ?? "-";
+
+        document.getElementById("wind").textContent =
+            currentData.weather.wind_speed ?? "-";
+
+        document.getElementById("pressure").textContent =
+            currentData.weather.pressure_msl ?? "-";
+
+        document.getElementById("timestamp").textContent =
+            new Date(currentData.weather.timestamp)
+            .toLocaleString("de-DE");
+
+        document
+            .getElementById("currentWeather")
+            .classList.remove("hidden");
+
+
+        // Vorhersage für die nächsten 5 Tage
+        const today = new Date();
+
+        const endDate = new Date();
+        endDate.setDate(today.getDate() + 5);
+
+        const weatherResponse = await fetch(
+            `https://api.brightsky.dev/weather?lat=${LAT}&lon=${LON}` +
+            `&date=${today.toISOString()}` +
+            `&last_date=${endDate.toISOString()}`
+        );
+
+        if (!weatherResponse.ok) {
+            throw new Error(
+                `Vorhersage: HTTP ${weatherResponse.status}`
+            );
+        }
+
+        const weatherData = await weatherResponse.json();
+
+        if (!weatherData.weather || weatherData.weather.length === 0) {
+            throw new Error(
+                "Keine Vorhersagedaten erhalten."
+            );
+        }
+
+        const dailyForecasts = {};
+
+        weatherData.weather.forEach(entry => {
+            const day = entry.timestamp.substring(0, 10);
+
+            if (
+                entry.temperature !== null &&
+                entry.temperature !== undefined &&
+                !dailyForecasts[day]
+            ) {
+                dailyForecasts[day] = entry;
+            }
+        });
+
+        const forecastGrid =
+            document.getElementById("forecastGrid");
+
+        Object.values(dailyForecasts)
+            .slice(0, 5)
+            .forEach(day => {
+
+                const div = document.createElement("div");
+                div.className = "forecast-item";
+
+                div.innerHTML = `
+                    <strong>
+                        ${new Date(day.timestamp)
+                            .toLocaleDateString("de-DE")}
+                    </strong>
+                    <br><br>
+                    🌡 ${day.temperature ?? "-"} °C
+                    <br>
+                    💨 ${day.wind_speed ?? "-"} km/h
+                    <br>
+                    ☁️ ${day.cloud_cover ?? "-"} %
+                `;
+
+                forecastGrid.appendChild(div);
+            });
+
+        document
+            .getElementById("forecastSection")
+            .classList.remove("hidden");
+
+        loading.classList.add("hidden");
+
+    } catch (error) {
+        console.error(error);
+
+        showError(
+            error.message +
+            "\n\nDetails:\n" +
+            (error.stack || "Keine weiteren Informationen")
+        );
     }
-
-    if (!forecastRes.ok) {
-      throw new Error("Forecast HTTP " + forecastRes.status);
-    }
-
-    const currentData = await currentRes.json();
-    const forecastData = await forecastRes.json();
-
-    console.log("Current:", currentData);
-    console.log("Forecast:", forecastData);
-
-    const current = currentData.weather;
-
-    if (!current) {
-      throw new Error("Kein weather-Objekt gefunden");
-    }
-
-    document.getElementById("current").innerHTML = `
-      <div>
-        <b>Temperatur:</b> ${current.temperature ?? "-"} °C<br>
-        <b>Wind:</b> ${current.wind_speed ?? "-"} km/h<br>
-        <b>Feuchtigkeit:</b> ${current.relative_humidity ?? "-"} %<br>
-        <b>Zustand:</b> ${current.condition ?? "-"}
-      </div>
-    `;
-
-    const forecast = forecastData.weather || [];
-
-    document.getElementById("forecast").innerHTML =
-      forecast.slice(0, 24).map(item => `
-        <div class="item">
-          <b>${new Date(item.timestamp).toLocaleString("de-DE")}</b><br>
-          ${item.temperature ?? "-"} °C
-        </div>
-      `).join("");
-
-  } catch (err) {
-    console.error(err);
-
-    document.getElementById("current").innerHTML =
-      "<pre>" + err.message + "</pre>";
-  }
 }
 
 loadWeather();
 </script>
+
 </body>
 </html>

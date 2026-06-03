@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wetter Rottweil</title>
+<meta name="description" content="Aktuelles Wetter und Prognose für Rottweil über Bright Sky (DWD).">
+<style>
+body{font-family:system-ui,sans-serif;max-width:1100px;margin:auto;padding:20px;background:#f5f7fa}
+.card{background:#fff;border-radius:12px;padding:16px;margin:16px 0;box-shadow:0 2px 8px rgba(0,0,0,.08)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+.item{background:#eef4fa;padding:10px;border-radius:8px}
+.small{font-size:.9rem;color:#555}
+</style>
+</head>
+<body>
+<h1>🌤 Wetter in Rottweil</h1>
+
+<div class="card">
+<h2>Aktuelles Wetter</h2>
+<div id="current">Lade Daten...</div>
+</div>
+
+<div class="card">
+<h2>Prognose (24 Stunden)</h2>
+<div id="forecast" class="grid"></div>
+</div>
+
+<script>
+const LAT = 48.1678;
+const LON = 8.6272;
+
+async function loadWeather() {
+  try {
+    const [currentRes, weatherRes] = await Promise.all([
+      fetch(`https://api.brightsky.dev/current_weather?lat=${LAT}&lon=${LON}`),
+      fetch(`https://api.brightsky.dev/weather?lat=${LAT}&lon=${LON}`)
+    ]);
+
+    const currentData = await currentRes.json();
+    const weatherData = await weatherRes.json();
+
+    renderCurrent(currentData.weather);
+    renderForecast(weatherData.weather);
+  } catch (e) {
+    document.getElementById("current").innerHTML =
+      "<b>Fehler beim Laden der Wetterdaten.</b>";
+    console.error(e);
+  }
+}
+
+function renderCurrent(w) {
+  document.getElementById("current").innerHTML = `
+    <div class="grid">
+      <div class="item"><b>Temperatur</b><br>${w.temperature ?? "-"} °C</div>
+      <div class="item"><b>Feuchtigkeit</b><br>${w.relative_humidity ?? "-"} %</div>
+      <div class="item"><b>Wind</b><br>${w.wind_speed ?? "-"} km/h</div>
+      <div class="item"><b>Druck</b><br>${w.pressure_msl ?? "-"} hPa</div>
+      <div class="item"><b>Zustand</b><br>${w.condition ?? "-"}</div>
+    </div>
+    <p class="small">Stand: ${new Date(w.timestamp).toLocaleString("de-DE")}</p>`;
+}
+
+function renderForecast(data) {
+  const now = new Date();
+  const next = data.filter(x => new Date(x.timestamp) > now).slice(0,24);
+
+  document.getElementById("forecast").innerHTML = next.map(x => `
+    <div class="item">
+      <b>${new Date(x.timestamp).toLocaleString("de-DE",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}</b><br>
+      🌡 ${x.temperature ?? "-"} °C<br>
+      💨 ${x.wind_speed ?? "-"} km/h<br>
+      ☁ ${x.cloud_cover ?? "-"} %<br>
+      🌦 ${x.condition ?? "-"}
+    </div>
+  `).join("");
+}
+
+loadWeather();
+</script>
+</body>
+</html>

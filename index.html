@@ -36,10 +36,17 @@ const dir=d=>["N","NO","O","SO","S","SW","W","NW"][Math.round(d/45)%8];
 
 async function load(){
  try{
-  const today=new Date().toISOString().slice(0,10);
+  const start = new Date().toISOString().slice(0,10);
+  const end = new Date(
+    Date.now() + (7 * 24 * 60 * 60 * 1000)
+).toISOString().slice(0,10);
+
+
   const [c,w]=await Promise.all([
    fetch(`https://api.brightsky.dev/current_weather?lat=${LAT}&lon=${LON}`),
-   fetch(`https://api.brightsky.dev/weather?lat=${LAT}&lon=${LON}&date=${today}`)
+   fetch(
+  `https://api.brightsky.dev/weather?lat=${LAT}&lon=${LON}&date=${start}&last_date=${end}`
+)
   ]);
   const current=await c.json();
   const weather=await w.json();

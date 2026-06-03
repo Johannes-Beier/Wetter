@@ -32,48 +32,59 @@ const LON = 8.6272;
 
 async function loadWeather() {
   try {
-    const [currentRes, weatherRes] = await Promise.all([
-      fetch(`https://api.brightsky.dev/current_weather?lat=${LAT}&lon=${LON}`),
-      fetch(`https://api.brightsky.dev/weather?lat=${LAT}&lon=${LON}`)
-    ]);
+    const currentRes = await fetch(
+      `https://api.brightsky.dev/current_weather?lat=${LAT}&lon=${LON}`
+    );
+
+    const forecastRes = await fetch(
+      `https://api.brightsky.dev/weather?lat=${LAT}&lon=${LON}`
+    );
+
+    if (!currentRes.ok) {
+      throw new Error("Current Weather HTTP " + currentRes.status);
+    }
+
+    if (!forecastRes.ok) {
+      throw new Error("Forecast HTTP " + forecastRes.status);
+    }
 
     const currentData = await currentRes.json();
-    const weatherData = await weatherRes.json();
+    const forecastData = await forecastRes.json();
 
-    renderCurrent(currentData.weather);
-    renderForecast(weatherData.weather);
-  } catch (e) {
+    console.log("Current:", currentData);
+    console.log("Forecast:", forecastData);
+
+    const current = currentData.weather;
+
+    if (!current) {
+      throw new Error("Kein weather-Objekt gefunden");
+    }
+
+    document.getElementById("current").innerHTML = `
+      <div>
+        <b>Temperatur:</b> ${current.temperature ?? "-"} °C<br>
+        <b>Wind:</b> ${current.wind_speed ?? "-"} km/h<br>
+        <b>Feuchtigkeit:</b> ${current.relative_humidity ?? "-"} %<br>
+        <b>Zustand:</b> ${current.condition ?? "-"}
+      </div>
+    `;
+
+    const forecast = forecastData.weather || [];
+
+    document.getElementById("forecast").innerHTML =
+      forecast.slice(0, 24).map(item => `
+        <div class="item">
+          <b>${new Date(item.timestamp).toLocaleString("de-DE")}</b><br>
+          ${item.temperature ?? "-"} °C
+        </div>
+      `).join("");
+
+  } catch (err) {
+    console.error(err);
+
     document.getElementById("current").innerHTML =
-      "<b>Fehler beim Laden der Wetterdaten.</b>";
-    console.error(e);
+      "<pre>" + err.message + "</pre>";
   }
-}
-
-function renderCurrent(w) {
-  document.getElementById("current").innerHTML = `
-    <div class="grid">
-      <div class="item"><b>Temperatur</b><br>${w.temperature ?? "-"} °C</div>
-      <div class="item"><b>Feuchtigkeit</b><br>${w.relative_humidity ?? "-"} %</div>
-      <div class="item"><b>Wind</b><br>${w.wind_speed ?? "-"} km/h</div>
-      <div class="item"><b>Druck</b><br>${w.pressure_msl ?? "-"} hPa</div>
-      <div class="item"><b>Zustand</b><br>${w.condition ?? "-"}</div>
-    </div>
-    <p class="small">Stand: ${new Date(w.timestamp).toLocaleString("de-DE")}</p>`;
-}
-
-function renderForecast(data) {
-  const now = new Date();
-  const next = data.filter(x => new Date(x.timestamp) > now).slice(0,24);
-
-  document.getElementById("forecast").innerHTML = next.map(x => `
-    <div class="item">
-      <b>${new Date(x.timestamp).toLocaleString("de-DE",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}</b><br>
-      🌡 ${x.temperature ?? "-"} °C<br>
-      💨 ${x.wind_speed ?? "-"} km/h<br>
-      ☁ ${x.cloud_cover ?? "-"} %<br>
-      🌦 ${x.condition ?? "-"}
-    </div>
-  `).join("");
 }
 
 loadWeather();

@@ -60,28 +60,28 @@
 </head>
 <body>
 
-    <h1>🌤 Wetter in Rottweil</h1>
+<h1>🌤 Wetter in Rottweil</h1>
 
-    <div id="loading" class="loading">
-        Wetterdaten werden geladen...
-    </div>
+<div id="loading" class="loading">
+    Wetterdaten werden geladen...
+</div>
 
-    <div id="errorBox" class="error hidden"></div>
+<div id="errorBox" class="error hidden"></div>
 
-    <div id="currentWeather" class="card hidden">
-        <h2>Aktuelles Wetter</h2>
+<div id="currentWeather" class="card hidden">
+    <h2>Aktuelles Wetter</h2>
 
-        <p><strong>Temperatur:</strong> <span id="temperature"></span> °C</p>
-        <p><strong>Wind:</strong> <span id="wind"></span> km/h</p>
-        <p><strong>Luftdruck:</strong> <span id="pressure"></span> hPa</p>
-        <p><strong>Zeitpunkt:</strong> <span id="timestamp"></span></p>
-    </div>
+    <p><strong>Temperatur:</strong> <span id="temperature"></span> °C</p>
+    <p><strong>Wind:</strong> <span id="wind"></span> km/h</p>
+    <p><strong>Luftdruck:</strong> <span id="pressure"></span> hPa</p>
+    <p><strong>Zeitpunkt:</strong> <span id="timestamp"></span></p>
+</div>
 
-    <div id="forecastSection" class="card hidden">
-        <h2>Vorhersage</h2>
+<div id="forecastSection" class="card hidden">
+    <h2>Vorhersage (5 Tage)</h2>
 
-        <div id="forecastGrid" class="forecast-grid"></div>
-    </div>
+    <div id="forecastGrid" class="forecast-grid"></div>
+</div>
 
 <script>
 const LAT = 48.1678;
@@ -94,20 +94,25 @@ function showError(message) {
     loading.classList.add("hidden");
 
     errorBox.classList.remove("hidden");
-    errorBox.textContent =
-        "Fehler beim Abrufen der Wetterdaten:\n\n" + message;
+    errorBox.textContent = message;
 }
 
 async function loadWeather() {
     try {
+
+        // =====================
         // Aktuelles Wetter
+        // =====================
+
         const currentResponse = await fetch(
             `https://api.brightsky.dev/current_weather?lat=${LAT}&lon=${LON}`
         );
 
         if (!currentResponse.ok) {
+            const errorText = await currentResponse.text();
+
             throw new Error(
-                `Aktuelles Wetter: HTTP ${currentResponse.status}`
+                `Aktuelles Wetter HTTP ${currentResponse.status}\n\n${errorText}`
             );
         }
 
@@ -115,7 +120,7 @@ async function loadWeather() {
 
         if (!currentData.weather) {
             throw new Error(
-                "Aktuelle Wetterdaten fehlen in der API-Antwort."
+                "Die API hat keine aktuellen Wetterdaten geliefert."
             );
         }
 
@@ -130,42 +135,58 @@ async function loadWeather() {
 
         document.getElementById("timestamp").textContent =
             new Date(currentData.weather.timestamp)
-            .toLocaleString("de-DE");
+                .toLocaleString("de-DE");
 
         document
             .getElementById("currentWeather")
             .classList.remove("hidden");
 
+        // =====================
+        // Vorhersage
+        // =====================
 
-        // Vorhersage für die nächsten 5 Tage
-        const today = new Date();
+        const today = new Date()
+            .toISOString()
+            .split("T")[0];
 
         const endDate = new Date();
-        endDate.setDate(today.getDate() + 5);
+        endDate.setDate(endDate.getDate() + 5);
 
-        const weatherResponse = await fetch(
-            `https://api.brightsky.dev/weather?lat=${LAT}&lon=${LON}` +
-            `&date=${today.toISOString()}` +
-            `&last_date=${endDate.toISOString()}`
-        );
+        const lastDate = endDate
+            .toISOString()
+            .split("T")[0];
+
+        const forecastUrl =
+            `https://api.brightsky.dev/weather?` +
+            `lat=${LAT}&lon=${LON}` +
+            `&date=${today}` +
+            `&last_date=${lastDate}`;
+
+        console.log("Forecast URL:", forecastUrl);
+
+        const weatherResponse = await fetch(forecastUrl);
 
         if (!weatherResponse.ok) {
+            const errorText = await weatherResponse.text();
+
             throw new Error(
-                `Vorhersage: HTTP ${weatherResponse.status}`
+                `Vorhersage HTTP ${weatherResponse.status}\n\n${errorText}`
             );
         }
 
         const weatherData = await weatherResponse.json();
 
-        if (!weatherData.weather || weatherData.weather.length === 0) {
+        if (!weatherData.weather ||
+            weatherData.weather.length === 0) {
             throw new Error(
-                "Keine Vorhersagedaten erhalten."
+                "Die API hat keine Vorhersagedaten geliefert."
             );
         }
 
         const dailyForecasts = {};
 
         weatherData.weather.forEach(entry => {
+
             const day = entry.timestamp.substring(0, 10);
 
             if (
@@ -179,6 +200,8 @@ async function loadWeather() {
 
         const forecastGrid =
             document.getElementById("forecastGrid");
+
+        forecastGrid.innerHTML = "";
 
         Object.values(dailyForecasts)
             .slice(0, 5)
@@ -211,12 +234,7 @@ async function loadWeather() {
 
     } catch (error) {
         console.error(error);
-
-        showError(
-            error.message +
-            "\n\nDetails:\n" +
-            (error.stack || "Keine weiteren Informationen")
-        );
+        showError(error.message);
     }
 }
 

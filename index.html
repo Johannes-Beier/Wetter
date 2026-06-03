@@ -3,122 +3,74 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Wetter Rottweil</title>
 
-<link rel="preconnect" href="https://api.brightsky.dev">
+<title>Wetter Rottweil</title>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
-:root{
-    --bg:#0f172a;
-    --card:#1e293b;
-    --card2:#334155;
-    --text:#f8fafc;
-    --accent:#38bdf8;
-}
-
-*{
-    box-sizing:border-box;
-    margin:0;
-    padding:0;
-    font-family:Arial,Helvetica,sans-serif;
-}
-
 body{
-    background:var(--bg);
-    color:var(--text);
+    font-family: Arial, sans-serif;
+    margin:0;
     padding:20px;
+    background:#f5f5f5;
 }
 
-h1{
-    text-align:center;
-    margin-bottom:20px;
-}
-
-h2{
-    margin-bottom:15px;
+h1,h2{
+    margin-top:30px;
 }
 
 .section{
-    background:var(--card);
-    border-radius:16px;
-    padding:20px;
-    margin-bottom:20px;
-}
-
-.current-weather{
-    display:flex;
-    align-items:center;
-    gap:20px;
-}
-
-.current-weather img{
-    width:80px;
-    height:80px;
-}
-
-.current-temp{
-    font-size:3rem;
-    font-weight:bold;
-}
-
-.forecast24{
-    display:grid;
-    grid-template-columns:repeat(auto-fill,minmax(110px,1fr));
-    gap:12px;
-}
-
-.hour-card{
-    background:var(--card2);
-    border-radius:12px;
-    padding:10px;
-    text-align:center;
-}
-
-.hour-card img{
-    width:40px;
-    height:40px;
-}
-
-.days{
-    display:grid;
-    grid-template-columns:repeat(auto-fill,minmax(180px,1fr));
-    gap:12px;
-}
-
-.day-card{
-    background:var(--card2);
+    background:white;
     border-radius:12px;
     padding:15px;
+    margin-bottom:20px;
+    box-shadow:0 2px 8px rgba(0,0,0,.1);
 }
 
-.day-card img{
-    width:50px;
-    height:50px;
+.horizontal-scroll{
+    overflow-x:auto;
+    white-space:nowrap;
+    padding-bottom:10px;
 }
 
-.day-header{
+.card{
+    display:inline-block;
+    vertical-align:top;
+    width:180px;
+    margin-right:12px;
+    padding:12px;
+    border-radius:10px;
+    background:#fafafa;
+    border:1px solid #ddd;
+}
+
+.card img{
+    width:64px;
+    height:64px;
+}
+
+.current-grid{
     display:flex;
-    justify-content:space-between;
-    align-items:center;
-    margin-bottom:10px;
+    gap:15px;
+    flex-wrap:wrap;
 }
 
-.temp-range{
-    font-size:1.1rem;
-    font-weight:bold;
-}
-
-canvas{
-    background:white;
+.current-item{
+    background:#fafafa;
+    border:1px solid #ddd;
     border-radius:10px;
     padding:10px;
+    min-width:150px;
+}
+
+.chart-container{
+    min-width:900px;
+    height:350px;
 }
 
 .loading{
-    text-align:center;
-    padding:40px;
+    color:#666;
 }
 </style>
 </head>
@@ -126,8 +78,46 @@ canvas{
 
 <h1>🌤 Wetter Rottweil</h1>
 
-<div id="content" class="loading">
-    Lade Wetterdaten...
+<div class="section">
+    <h2>Aktuelles Wetter</h2>
+    <div id="current" class="loading">Lade Daten...</div>
+</div>
+
+<div class="section">
+    <h2>Nächste 24 Stunden</h2>
+    <div id="hourly" class="horizontal-scroll"></div>
+</div>
+
+<div class="section">
+    <h2>Temperatur heute</h2>
+    <div class="horizontal-scroll">
+        <div class="chart-container">
+            <canvas id="tempChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<div class="section">
+    <h2>Luftfeuchtigkeit heute</h2>
+    <div class="horizontal-scroll">
+        <div class="chart-container">
+            <canvas id="humidityChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<div class="section">
+    <h2>Windgeschwindigkeit heute</h2>
+    <div class="horizontal-scroll">
+        <div class="chart-container">
+            <canvas id="windChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<div class="section">
+    <h2>7-Tage-Vorhersage</h2>
+    <div id="daily" class="horizontal-scroll"></div>
 </div>
 
 <script>
@@ -135,169 +125,198 @@ canvas{
 const LAT = 48.1678;
 const LON = 8.6272;
 
-const iconUrl = (icon) =>
-    `https://cdn.jsdelivr.net/gh/jdemaeyer/brightsky-icons/icons/${icon}.svg`;
+const iconUrl = icon =>
+    `https://brightsky.dev/static/icons/${icon}`;
+
+function formatHour(date){
+    return new Date(date).toLocaleTimeString(
+        "de-DE",
+        {hour:"2-digit", minute:"2-digit"}
+    );
+}
+
+function formatDate(date){
+    return new Date(date).toLocaleDateString(
+        "de-DE",
+        {
+            weekday:"short",
+            day:"2-digit",
+            month:"2-digit"
+        }
+    );
+}
 
 async function loadWeather(){
 
-    const now = new Date();
+    try{
 
-    const today = now.toISOString().split("T")[0];
+        const now = new Date();
 
-    const weatherUrl =
-        `https://api.brightsky.dev/weather?lat=${LAT}&lon=${LON}&date=${today}`;
+        const startToday =
+            new Date(
+                now.getFullYear(),
+                now.getMonth(),
+                now.getDate(),
+                0,0,0
+            );
 
-    const response = await fetch(weatherUrl);
-    const data = await response.json();
+        const endToday =
+            new Date(
+                now.getFullYear(),
+                now.getMonth(),
+                now.getDate(),
+                23,59,59
+            );
 
-    const weather = data.weather;
+        const weatherUrl =
+            `https://api.brightsky.dev/weather?lat=${LAT}&lon=${LON}`;
 
-    const current = weather.findLast(entry =>
-        new Date(entry.timestamp) <= new Date()
-    ) || weather[0];
+        const dailyUrl =
+            `https://api.brightsky.dev/daily?lat=${LAT}&lon=${LON}`;
 
-    render(current, weather);
+        const [weatherRes,dailyRes] =
+            await Promise.all([
+                fetch(weatherUrl),
+                fetch(dailyUrl)
+            ]);
+
+        const weatherData =
+            await weatherRes.json();
+
+        const dailyData =
+            await dailyRes.json();
+
+        const current =
+            weatherData.weather[0];
+
+        renderCurrent(current);
+
+        renderHourly(weatherData.weather);
+
+        renderCharts(weatherData.weather);
+
+        renderDaily(dailyData.weather);
+
+    }
+    catch(err){
+        console.error(err);
+        document.getElementById("current").innerHTML =
+            "Fehler beim Laden der Wetterdaten.";
+    }
 }
 
-function render(current, weather){
+function renderCurrent(data){
 
-    const next24 = weather
-        .filter(w => new Date(w.timestamp) > new Date())
-        .slice(0,24);
+    document.getElementById("current").innerHTML = `
+        <div class="current-grid">
 
-    const byDay = {};
-
-    weather.forEach(item=>{
-        const day = item.timestamp.split("T")[0];
-
-        if(!byDay[day]){
-            byDay[day] = [];
-        }
-
-        byDay[day].push(item);
-    });
-
-    const next7Days = Object.entries(byDay)
-        .slice(0,7);
-
-    document.getElementById("content").innerHTML = `
-
-        <div class="section">
-            <h2>Aktuelles Wetter</h2>
-
-            <div class="current-weather">
-                <img src="${iconUrl(current.icon)}"
-                     onerror="this.src='https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/icons/cloud.svg'">
-
-                <div>
-                    <div class="current-temp">
-                        ${Math.round(current.temperature)}°C
-                    </div>
-
-                    <div>${translateCondition(current.condition)}</div>
-
-                    <div>
-                        Wind: ${Math.round(current.wind_speed || 0)} km/h
-                    </div>
-
-                    <div>
-                        Luftfeuchte: ${current.relative_humidity || "-"}%
-                    </div>
-                </div>
+            <div class="current-item">
+                <img src="${iconUrl(data.icon)}">
             </div>
-        </div>
 
-        <div class="section">
-            <h2>Nächste 24 Stunden</h2>
-
-            <div class="forecast24">
-                ${next24.map(hour => `
-                    <div class="hour-card">
-                        <div>
-                            ${new Date(hour.timestamp)
-                                .toLocaleTimeString('de-DE',{
-                                    hour:'2-digit',
-                                    minute:'2-digit'
-                                })}
-                        </div>
-
-                        <img src="${iconUrl(hour.icon)}"
-                             onerror="this.style.display='none'">
-
-                        <div>${Math.round(hour.temperature)}°C</div>
-                    </div>
-                `).join("")}
+            <div class="current-item">
+                <strong>Temperatur</strong><br>
+                ${data.temperature} °C
             </div>
-        </div>
 
-        <div class="section">
-            <h2>Diagramme für heute</h2>
-
-            <canvas id="tempChart"></canvas>
-            <br>
-            <canvas id="rainChart"></canvas>
-            <br>
-            <canvas id="windChart"></canvas>
-        </div>
-
-        <div class="section">
-            <h2>7-Tage-Vorschau</h2>
-
-            <div class="days">
-                ${next7Days.map(([date, values])=>{
-
-                    const max =
-                        Math.max(...values.map(v => v.temperature ?? -999));
-
-                    const min =
-                        Math.min(...values.map(v => v.temperature ?? 999));
-
-                    const icon =
-                        values[Math.floor(values.length/2)]?.icon
-                        || "cloudy";
-
-                    return `
-                        <div class="day-card">
-
-                            <div class="day-header">
-                                <div>
-                                    ${new Date(date)
-                                        .toLocaleDateString('de-DE',{
-                                            weekday:'short',
-                                            day:'2-digit',
-                                            month:'2-digit'
-                                        })}
-                                </div>
-
-                                <img src="${iconUrl(icon)}"
-                                     onerror="this.style.display='none'">
-                            </div>
-
-                            <div class="temp-range">
-                                ${Math.round(max)}° /
-                                ${Math.round(min)}°
-                            </div>
-
-                        </div>
-                    `;
-                }).join("")}
+            <div class="current-item">
+                <strong>Bewölkung</strong><br>
+                ${data.cloud_cover} %
             </div>
+
+            <div class="current-item">
+                <strong>Windrichtung</strong><br>
+                ${data.wind_direction}°
+            </div>
+
+            <div class="current-item">
+                <strong>Wind</strong><br>
+                ${data.wind_speed} km/h
+            </div>
+
+            <div class="current-item">
+                <strong>Luftfeuchtigkeit</strong><br>
+                ${data.relative_humidity} %
+            </div>
+
+            <div class="current-item">
+                <strong>Luftdruck</strong><br>
+                ${data.pressure_msl} hPa
+            </div>
+
         </div>
     `;
-
-    createCharts(weather);
 }
 
-function createCharts(weather){
+function renderHourly(weather){
 
-    const todayData = weather.slice(0,24);
+    const container =
+        document.getElementById("hourly");
 
-    const labels = todayData.map(item =>
-        new Date(item.timestamp)
-            .toLocaleTimeString("de-DE",{
-                hour:"2-digit"
-            })
-    );
+    container.innerHTML = "";
+
+    weather.slice(0,24).forEach(hour=>{
+
+        container.innerHTML += `
+            <div class="card">
+                <div>${formatHour(hour.timestamp)}</div>
+
+                <img
+                    src="${iconUrl(hour.icon)}"
+                    alt=""
+                >
+
+                <div>${hour.temperature} °C</div>
+                <div>${hour.cloud_cover}% Wolken</div>
+                <div>${hour.wind_speed} km/h</div>
+            </div>
+        `;
+    });
+}
+
+function renderDaily(days){
+
+    const container =
+        document.getElementById("daily");
+
+    container.innerHTML = "";
+
+    days.slice(0,7).forEach(day=>{
+
+        container.innerHTML += `
+            <div class="card">
+
+                <div>
+                    <strong>
+                        ${formatDate(day.date)}
+                    </strong>
+                </div>
+
+                <img
+                    src="${iconUrl(day.icon)}"
+                    alt=""
+                >
+
+                <div>
+                    Max: ${day.temperature_max} °C
+                </div>
+
+                <div>
+                    Min: ${day.temperature_min} °C
+                </div>
+
+            </div>
+        `;
+    });
+}
+
+function renderCharts(weather){
+
+    const today =
+        weather.slice(0,24);
+
+    const labels =
+        today.map(x => formatHour(x.timestamp));
 
     new Chart(
         document.getElementById("tempChart"),
@@ -307,21 +326,25 @@ function createCharts(weather){
                 labels,
                 datasets:[{
                     label:"Temperatur °C",
-                    data:todayData.map(x=>x.temperature)
+                    data:today.map(
+                        x => x.temperature
+                    )
                 }]
             }
         }
     );
 
     new Chart(
-        document.getElementById("rainChart"),
+        document.getElementById("humidityChart"),
         {
-            type:"bar",
+            type:"line",
             data:{
                 labels,
                 datasets:[{
-                    label:"Niederschlag mm",
-                    data:todayData.map(x=>x.precipitation || 0)
+                    label:"Luftfeuchtigkeit %",
+                    data:today.map(
+                        x => x.relative_humidity
+                    )
                 }]
             }
         }
@@ -335,26 +358,13 @@ function createCharts(weather){
                 labels,
                 datasets:[{
                     label:"Wind km/h",
-                    data:todayData.map(x=>x.wind_speed || 0)
+                    data:today.map(
+                        x => x.wind_speed
+                    )
                 }]
             }
         }
     );
-}
-
-function translateCondition(condition){
-
-    const map = {
-        dry:"Trocken",
-        rain:"Regen",
-        sleet:"Schneeregen",
-        snow:"Schnee",
-        hail:"Hagel",
-        fog:"Nebel",
-        thunderstorm:"Gewitter"
-    };
-
-    return map[condition] || condition;
 }
 
 loadWeather();

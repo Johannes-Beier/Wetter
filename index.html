@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Wetter Rottweil V2</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+:root{--bg:#eef2f7;--card:rgba(255,255,255,.7);--txt:#111}
+@media (prefers-color-scheme:dark){
+:root{--bg:#0f172a;--card:rgba(30,41,59,.75);--txt:#f1f5f9}
+}
+body{margin:0;padding:20px;background:var(--bg);color:var(--txt);font-family:system-ui}
+.card{backdrop-filter:blur(12px);background:var(--card);border-radius:18px;padding:16px;margin:12px 0}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px}
+.value{font-size:1.4rem;font-weight:bold}
+.scroll{display:flex;gap:12px;overflow-x:auto;padding:8px 0}
+.hour,.day{min-width:150px;padding:12px;border-radius:14px;background:var(--card)}
+.charts{display:flex;gap:16px;overflow-x:auto}
+.chartbox{min-width:500px;background:var(--card);padding:12px;border-radius:14px}
+.loader{text-align:center;padding:30px}
+.err{color:#dc2626}
+</style>
+</head>
+<body>
+<h1>🌦️ Wetter Rottweil</h1>
+<div id="app"><div class="loader">Lade Wetterdaten...</div></div>
+<script>
+const LAT=48.1678,LON=8.6272;
+const ICONS={
+"clear-day":"☀️","clear-night":"🌙","partly-cloudy-day":"⛅","partly-cloudy-night":"☁️🌙",
+"cloudy":"☁️","fog":"🌫️","rain":"🌧️","sleet":"🌨️","snow":"❄️","wind":"💨","thunderstorm":"⛈️"
+};
+const icon=i=>ICONS[i]||"🌤️";
+const dir=d=>["N","NO","O","SO","S","SW","W","NW"][Math.round(d/45)%8];
+
+async function load(){
+ try{
+  const today=new Date().toISOString().slice(0,10);
+  const [c,w]=await Promise.all([
+   fetch(`https://api.brightsky.dev/current_weather?lat=${LAT}&lon=${LON}`),
+   fetch(`https://api.brightsky.dev/weather?lat=${LAT}&lon=${LON}&date=${today}`)
+  ]);
+  const current=await c.json();
+  const weather=await w.json();
+  render(current.weather,weather.weather);
+ }catch(e){
+  document.getElementById("app").innerHTML='<div class="err">Fehler beim Laden der Wetterdaten.</div>';
+ }
+}
+
+function render(cur,data){
+ const next24=data.slice(0,24);
+ const days={};
+ data.forEach(x=>{
+   const d=x.timestamp.slice(0,10);
+   if(!days[d]) days[d]={temps:[],rain:0,wind:[],pp:[],icons:{}};
+   days[d].temps.push(x.temperature);
+   days[d].rain+=x.precipitation||0;
+   days[d].wind.push(x.wind_speed||0);
+   if(x.precipitation_probability!=null) days[d].pp.push(x.precipitation_probability);
+   days[d].icons[x.icon]=(days[d].icons[x.icon]||0)+1;
+ });
+ const daily=Object.entries(days).slice(0,7).map(([d,v])=>({
+   date:d,max:Math.max(...v.temps),min:Math.min(...v.temps),
+   rain:v.rain.toFixed(1),
+   wind:(v.wind.reduce((a,b)=>a+b,0)/v.wind.length).toFixed(1),
+   pp:v.pp.length?Math.max(...v.pp):0,
+   icon:Object.entries(v.icons).sort((a,b)=>b[1]-a[1])[0][0]
+ }));
+
+ document.getElementById("app").innerHTML=`
+ <div class="card">
+ <h2>${icon(cur.icon)} Aktuelles Wetter</h2>
+ <div class="grid">
+ <div><div class=value>${cur.temperature}°C</div>Temperatur</div>
+ <div><div class=value>${cur.cloud_cover}%</div>Bewölkung</div>
+ <div><div class=value>${dir(cur.wind_direction_10||cur.wind_direction)}</div>Windrichtung</div>
+ <div><div class=value>${cur.wind_speed_10||cur.wind_speed} km/h</div>Wind</div>
+ <div><div class=value>${cur.relative_humidity}%</div>Luftfeuchte</div>
+ <div><div class=value>${cur.pressure_msl??'-'} hPa</div>Druck</div>
+ </div></div>
+
+ <div class="card"><h2>24 Stunden</h2><div class="scroll" id="hours"></div></div>
+
+ <div class="card"><h2>Diagramme</h2>
+ <div class="charts">
+ <div class="chartbox"><canvas id="c1"></canvas></div>
+ <div class="chartbox"><canvas id="c2"></canvas></div>
+ <div class="chartbox"><canvas id="c3"></canvas></div>
+ </div></div>
+
+ <div class="card"><h2>7 Tage</h2><div class="scroll" id="days"></div></div>`;
+
+ document.getElementById("hours").innerHTML=next24.map(h=>`
+ <div class=hour>
+ <div>${new Date(h.timestamp).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})}</div>
+ <div style="font-size:2rem">${icon(h.icon)}</div>
+ <div>${h.temperature}°C</div>
+ <div>💧 ${h.precipitation||0} mm</div>
+ </div>`).join('');
+
+ document.getElementById("days").innerHTML=daily.map(d=>`
+ <div class=day>
+ <div>${new Date(d.date).toLocaleDateString('de-DE',{weekday:'short',day:'2-digit',month:'2-digit'})}</div>
+ <div style="font-size:2rem">${icon(d.icon)}</div>
+ <div>⬆️ ${d.max.toFixed(1)}°C</div>
+ <div>⬇️ ${d.min.toFixed(1)}°C</div>
+ <div>🌧️ ${d.rain} mm</div>
+ <div>💨 ${d.wind} km/h</div>
+ <div>☔ ${d.pp}%</div>
+ </div>`).join('');
+
+ const labels=next24.map(x=>new Date(x.timestamp).getHours()+':00');
+ new Chart(document.getElementById('c1'),{type:'line',data:{labels,datasets:[{label:'Temperatur',data:next24.map(x=>x.temperature)}]}});
+ new Chart(document.getElementById('c2'),{type:'bar',data:{labels,datasets:[{label:'Niederschlag',data:next24.map(x=>x.precipitation||0)}]}});
+ new Chart(document.getElementById('c3'),{type:'line',data:{labels,datasets:[{label:'Wind',data:next24.map(x=>x.wind_speed||0)}]}});
+}
+load();
+setInterval(load,900000);
+</script>
+</body>
+</html>

@@ -187,7 +187,7 @@ function tempChart(hrs, nowH) {
   const Y = t => PT + (1 - (t - lo) / (hi - lo)) * (H - PT - PB);
   const line = pts.map((p, i) => `${i ? 'L' : 'M'}${X(p[0]).toFixed(1)},${Y(p[1]).toFixed(1)}`).join('');
   const area = `${line}L${X(pts[pts.length - 1][0])},${H - PB}L${X(pts[0][0])},${H - PB}Z`;
-  const grid = [lo, (lo + hi) / 2, hi].map(t => `<line class="grid" x1="${PL}" x2="${W - PR}" y1="${Y(t)}" y2="${Y(t)}"/><text x="${PL - 6}" y="${Y(t) + 4}" text-anchor="end">${Math.round(t)}°</text>`).join('');
+  const grid = [lo, (lo + hi) / 2, hi].map(t => `<line class="grid" x1="${PL}" x2="${W - PR}" y1="${Y(t)}" y2="${Y(t)}"/><text x="${PL - 6}" y="${Y(t) + 4}" text-anchor="end" style="fill:var(--temp)">${Math.round(t)}°</text>`).join('');
   const maxP = pts.reduce((a, b) => b[1] > a[1] ? b : a), minP = pts.reduce((a, b) => b[1] < a[1] ? b : a);
   const mark = (p, dy) => `<circle cx="${X(p[0])}" cy="${Y(p[1])}" r="3.5" fill="var(--temp)"/><text x="${X(p[0])}" y="${Y(p[1]) + dy}" text-anchor="middle" style="fill:var(--ink)">${num(p[1], 1)}°</text>`;
   const vp = hrs.filter(h => h.visibility != null).map(h => [hourOf(h.timestamp), h.visibility / 1000]);
@@ -210,7 +210,7 @@ function rainChart(hrs, nowH) {
   const top = Math.max(1, Math.ceil(Math.max(...data.map(d => d[1]))));
   const Y = v => PT + (1 - v / top) * (H - PT - PB);
   const bw = (W - PL - PR) / 24 * .7;
-  const grid = [0, top / 2, top].map(v => `<line class="grid" x1="${PL}" x2="${W - PR}" y1="${Y(v)}" y2="${Y(v)}"/><text x="${PL - 6}" y="${Y(v) + 4}" text-anchor="end">${num(v, v % 1 ? 1 : 0)}</text>`).join('');
+  const grid = [0, top / 2, top].map(v => `<line class="grid" x1="${PL}" x2="${W - PR}" y1="${Y(v)}" y2="${Y(v)}"/><text x="${PL - 6}" y="${Y(v) + 4}" text-anchor="end" style="fill:var(--rain)">${num(v, v % 1 ? 1 : 0)}</text>`).join('');
   const cp = hrs.filter(h => h.cloud_cover != null).map(h => [hourOf(h.timestamp), h.cloud_cover]);
   const YC = c => PT + (1 - c / 100) * (H - PT - PB);
   const cLine = cp.map((p, i) => `${i ? 'L' : 'M'}${X(p[0]).toFixed(1)},${YC(p[1]).toFixed(1)}`).join('');
@@ -228,8 +228,8 @@ function rainChart(hrs, nowH) {
       <text x="${X(d[0])}" y="${y0 + 15}" text-anchor="middle" style="fill:var(--ink);font-size:9px">${p == null ? '–' : p + '%'}</text></g>`;
   }).join('');
   return `<svg viewBox="0 0 ${W} ${H + 44}" role="img" aria-label="Niederschlag heute in Millimeter pro Stunde und Bewölkung in Prozent, darunter die stündliche Regenwahrscheinlichkeit">${grid}${clouds}${bars}${cOver}${xAxis(nowH)}
-    <text x="${PL}" y="10">mm pro Stunde</text>
-    <text x="${PL}" y="${y0 - 5}">Regenwahrscheinlichkeit in %</text>${cells}</svg>`;
+    <text x="${PL}" y="10" style="fill:var(--rain)">Niederschlag in mm pro Stunde</text>
+    <text x="${PL}" y="${y0 - 5}" style="fill:var(--rain)">Regenwahrscheinlichkeit in %</text>${cells}</svg>`;
 }
 
 function windChart(hrs, nowH) {

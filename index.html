@@ -45,6 +45,16 @@ svg .grid{stroke:var(--line);stroke-width:1}
 .msg{color:var(--mute);padding:12px 0}
 button{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:6px 14px;cursor:pointer}
 button:focus-visible{outline:2px solid var(--rain);outline-offset:2px}
+#search{display:flex;gap:8px;margin-top:16px;max-width:420px}
+#q{flex:1;min-width:0;font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:6px 12px}
+#q:focus-visible{outline:2px solid var(--rain);outline-offset:2px}
+#results{list-style:none;margin:6px 0 0;padding:0;max-width:420px;border:1px solid var(--line);border-radius:6px;background:var(--surface)}
+#results:empty{display:none}
+#results li+li{border-top:1px solid var(--line)}
+#results button{display:block;width:100%;text-align:left;border:0;border-radius:0;background:none;padding:8px 12px}
+#results button:hover,#results button:focus-visible{background:var(--line)}
+#results small{color:var(--mute);margin-left:6px}
+#results .none{padding:8px 12px;color:var(--mute)}
 footer{margin-top:48px;color:var(--mute);font-size:.85rem}
 footer a{color:inherit}
 </style>
@@ -52,8 +62,13 @@ footer a{color:inherit}
 <body>
 <main>
   <header>
-    <h1>Rottweil</h1>
+    <h1 id="ort">Rottweil</h1>
     <p class="sub" id="stand">Wetterdaten werden geladen …</p>
+    <form id="search" role="search" autocomplete="off">
+      <input id="q" type="search" placeholder="Anderen Ort suchen …" aria-label="Ort suchen">
+      <button type="submit">Suchen</button>
+    </form>
+    <ul id="results" aria-live="polite"></ul>
   </header>
 
   <div class="hero" id="current"></div>
@@ -75,11 +90,12 @@ footer a{color:inherit}
     <div id="days"></div>
   </section>
 
-  <footer>Daten: Deutscher Wetterdienst (DWD) über die <a href="https://brightsky.dev" target="_blank" rel="noopener">Bright Sky API</a>.</footer>
+  <footer>Daten: Deutscher Wetterdienst (DWD) über die <a href="https://brightsky.dev" target="_blank" rel="noopener">Bright Sky API</a>. Ortssuche: <a href="https://open-meteo.com/en/docs/geocoding-api" target="_blank" rel="noopener">Open-Meteo Geocoding</a>.</footer>
 </main>
 
 <script>
-const LAT = 48.1678, LON = 8.6264, TZ = 'Europe/Berlin';
+let loc = { name: 'Rottweil', lat: 48.1678, lon: 8.6264, tz: 'Europe/Berlin' };
+let TZ = loc.tz;
 const API = 'https://api.brightsky.dev';
 
 const ICONS = {
@@ -93,10 +109,14 @@ const ico = k => (ICONS[k] || ['·', 'Unbekannt']);
 const num = (v, d = 0) => v == null ? '–' : Number(v).toFixed(d).replace('.', ',');
 const $ = id => document.getElementById(id);
 
-const dateFmt = new Intl.DateTimeFormat('sv-SE', { timeZone: TZ });
-const hourFmt = new Intl.DateTimeFormat('de-DE', { timeZone: TZ, hour: '2-digit', hourCycle: 'h23' });
-const timeFmt = new Intl.DateTimeFormat('de-DE', { timeZone: TZ, hour: '2-digit', minute: '2-digit' });
-const dayFmt = new Intl.DateTimeFormat('de-DE', { timeZone: TZ, weekday: 'short', day: '2-digit', month: '2-digit' });
+let dateFmt, hourFmt, timeFmt, dayFmt;
+function initFmt() {
+  dateFmt = new Intl.DateTimeFormat('sv-SE', { timeZone: TZ });
+  hourFmt = new Intl.DateTimeFormat('de-DE', { timeZone: TZ, hour: '2-digit', hourCycle: 'h23' });
+  timeFmt = new Intl.DateTimeFormat('de-DE', { timeZone: TZ, hour: '2-digit', minute: '2-digit' });
+  dayFmt = new Intl.DateTimeFormat('de-DE', { timeZone: TZ, weekday: 'short', day: '2-digit', month: '2-digit' });
+}
+initFmt();
 const dayKey = ts => dateFmt.format(new Date(ts));
 const hourOf = ts => parseInt(hourFmt.format(new Date(ts)), 10);
 const compass = deg => deg == null ? '' : ['N','NO','O','SO','S','SW','W','NW'][Math.round(deg / 45) % 8];
@@ -107,31 +127,81 @@ async function getJSON(url) {
   return r.json();
 }
 
+let reqId = 0;
 async function load() {
+  const id = ++reqId;
+  TZ = loc.tz; initFmt();
+  $('ort').textContent = loc.name;
+  document.title = 'Wetter ' + loc.name;
   $('stand').textContent = 'Wetterdaten werden geladen …';
   const now = new Date();
   const today = dateFmt.format(now);
   const end = dateFmt.format(new Date(now.getTime() + 7 * 864e5));
-  const q = `lat=${LAT}&lon=${LON}&tz=${TZ}`;
+  const q = `lat=${loc.lat}&lon=${loc.lon}&tz=${encodeURIComponent(TZ)}`;
   try {
-    const [cur, fc] = await Promise.all([
+    const [cur, fc] = await Promise.allSettled([
       getJSON(`${API}/current_weather?${q}`),
       getJSON(`${API}/weather?${q}&date=${today}&last_date=${end}`)
     ]);
-    renderCurrent(cur.weather);
-    renderHours(fc.weather, now);
-    renderToday(fc.weather, today, now);
-    renderDays(fc.weather);
+    if (id !== reqId) return;
+    if (fc.status !== 'fulfilled') throw fc.reason;
+    const list = fc.value.weather;
+    if (cur.status === 'fulfilled') renderCurrent(cur.value.weather);
+    else {
+      // Keine Messstation in der Nähe: stattdessen Prognose der aktuellen Stunde anzeigen
+      const h = list.find(x => new Date(x.timestamp).getTime() > now.getTime() - 3600e3) || list[0];
+      renderCurrent({ ...h, wind_speed_10: h.wind_speed, wind_direction_10: h.wind_direction, wind_gust_speed_10: h.wind_gust_speed, precipitation_60: h.precipitation }, true);
+    }
+    renderHours(list, now);
+    renderToday(list, today, now);
+    renderDays(list);
   } catch (e) {
+    if (id !== reqId) return;
+    ['current', 'hours', 'chartTemp', 'chartRain', 'chartWind', 'days'].forEach(k => $(k).innerHTML = '');
     $('stand').innerHTML = 'Die Wetterdaten konnten nicht geladen werden. <button id="retry">Erneut versuchen</button>';
     $('retry').onclick = load;
     console.error(e);
   }
 }
 
-function renderCurrent(w) {
+// Ortssuche (Open-Meteo Geocoding)
+const resultsEl = $('results');
+let searchId = 0, timer;
+async function search(term) {
+  const id = ++searchId;
+  term = term.trim();
+  if (term.length < 2) { resultsEl.innerHTML = ''; return; }
+  try {
+    const r = await getJSON(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(term)}&count=6&language=de&format=json`);
+    if (id !== searchId) return;
+    const res = r.results || [];
+    resultsEl.innerHTML = res.length ? '' : '<li class="none">Kein Ort gefunden.</li>';
+    res.forEach(p => {
+      const li = document.createElement('li'), b = document.createElement('button');
+      b.type = 'button';
+      b.append(p.name);
+      const sm = document.createElement('small');
+      sm.textContent = [p.admin1, p.country].filter(Boolean).join(', ');
+      b.append(sm);
+      b.onclick = () => {
+        loc = { name: p.name, lat: p.latitude, lon: p.longitude, tz: p.timezone || 'Europe/Berlin' };
+        resultsEl.innerHTML = '';
+        $('q').value = '';
+        load();
+      };
+      li.append(b);
+      resultsEl.append(li);
+    });
+  } catch (e) {
+    if (id === searchId) resultsEl.innerHTML = '<li class="none">Die Ortssuche ist gerade nicht erreichbar.</li>';
+  }
+}
+$('search').addEventListener('submit', e => { e.preventDefault(); clearTimeout(timer); search($('q').value); });
+$('q').addEventListener('input', e => { clearTimeout(timer); timer = setTimeout(() => search(e.target.value), 350); });
+
+function renderCurrent(w, isForecast) {
   const [emoji, label] = ico(w.icon);
-  $('stand').textContent = `Aktuell, Stand ${timeFmt.format(new Date(w.timestamp))} Uhr`;
+  $('stand').textContent = (isForecast ? 'Prognose für ' : 'Aktuell, Stand ') + timeFmt.format(new Date(w.timestamp)) + ' Uhr';
   $('current').innerHTML = `
     <div>
       <div class="temp">${num(w.temperature, 1)}°</div>

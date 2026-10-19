@@ -192,14 +192,22 @@ function tempChart(hrs, nowH) {
 }
 
 function rainChart(hrs, nowH) {
-  const data = hrs.map(h => [hourOf(h.timestamp), h.precipitation || 0]);
+  const data = hrs.map(h => [hourOf(h.timestamp), h.precipitation || 0, h.precipitation_probability]);
   const top = Math.max(1, Math.ceil(Math.max(...data.map(d => d[1]))));
   const Y = v => PT + (1 - v / top) * (H - PT - PB);
   const bw = (W - PL - PR) / 24 * .7;
   const grid = [0, top / 2, top].map(v => `<line class="grid" x1="${PL}" x2="${W - PR}" y1="${Y(v)}" y2="${Y(v)}"/><text x="${PL - 6}" y="${Y(v) + 4}" text-anchor="end">${num(v, v % 1 ? 1 : 0)}</text>`).join('');
   const bars = data.map(d => d[1] > 0 ? `<rect x="${X(d[0]) - bw / 2}" y="${Y(d[1])}" width="${bw}" height="${H - PB - Y(d[1])}" rx="2" fill="var(--rain)"><title>${d[0]} Uhr: ${num(d[1], 1)} mm</title></rect>` : '').join('');
-  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Niederschlag heute in Millimeter pro Stunde">${grid}${bars}${xAxis(nowH)}
-    <text x="${PL}" y="10">mm pro Stunde</text></svg>`;
+  const sp = (W - PL - PR) / 23, y0 = H + 16;
+  const cells = data.map(d => {
+    const p = d[2];
+    return `<g><title>${d[0]} Uhr: ${p == null ? 'keine Angabe' : p + ' % Regenwahrscheinlichkeit'}</title>
+      <rect x="${X(d[0]) - sp / 2 + .75}" y="${y0}" width="${sp - 1.5}" height="22" rx="3" fill="var(--rain)" opacity="${p == null ? .06 : .08 + .6 * p / 100}"/>
+      <text x="${X(d[0])}" y="${y0 + 15}" text-anchor="middle" style="fill:var(--ink);font-size:10px">${p == null ? '–' : p}</text></g>`;
+  }).join('');
+  return `<svg viewBox="0 0 ${W} ${H + 44}" role="img" aria-label="Niederschlag heute in Millimeter pro Stunde, darunter die stündliche Regenwahrscheinlichkeit in Prozent">${grid}${bars}${xAxis(nowH)}
+    <text x="${PL}" y="10">mm pro Stunde</text>
+    <text x="${PL}" y="${y0 - 5}">Regenwahrscheinlichkeit in %</text>${cells}</svg>`;
 }
 
 function renderDays(list) {

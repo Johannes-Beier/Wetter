@@ -190,10 +190,17 @@ function tempChart(hrs, nowH) {
   const grid = [lo, (lo + hi) / 2, hi].map(t => `<line class="grid" x1="${PL}" x2="${W - PR}" y1="${Y(t)}" y2="${Y(t)}"/><text x="${PL - 6}" y="${Y(t) + 4}" text-anchor="end">${Math.round(t)}°</text>`).join('');
   const maxP = pts.reduce((a, b) => b[1] > a[1] ? b : a), minP = pts.reduce((a, b) => b[1] < a[1] ? b : a);
   const mark = (p, dy) => `<circle cx="${X(p[0])}" cy="${Y(p[1])}" r="3.5" fill="var(--temp)"/><text x="${X(p[0])}" y="${Y(p[1]) + dy}" text-anchor="middle" style="fill:var(--ink)">${num(p[1], 1)}°</text>`;
-  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Temperaturverlauf heute">${grid}
+  const sp = (W - PL - PR) / 23;
+  const strip = (y, label, key, fmt, unit, op) => `<text x="${PL}" y="${y - 5}">${label}</text>` + hrs.map(h => {
+    const v = h[key], x = X(hourOf(h.timestamp));
+    return `<g><title>${hourOf(h.timestamp)} Uhr: ${v == null ? 'keine Angabe' : fmt(v) + ' ' + unit}</title><rect x="${x - sp / 2 + .75}" y="${y}" width="${sp - 1.5}" height="22" rx="3" fill="var(--mute)" opacity="${v == null ? .06 : .08 + .5 * op(v)}"/><text x="${x}" y="${y + 15}" text-anchor="middle" style="fill:var(--ink);font-size:9px">${v == null ? '–' : fmt(v)}</text></g>`;
+  }).join('');
+  const clouds = strip(H + 16, 'Bewölkung in %', 'cloud_cover', v => Math.round(v) + '%', '', v => v / 100);
+  const vis = strip(H + 59, 'Sichtweite in km (dunkler = schlechtere Sicht)', 'visibility', v => v >= 10000 ? Math.round(v / 1000) : num(v / 1000, 1), 'km', v => 1 - Math.min(v / 10000, 1));
+  return `<svg viewBox="0 0 ${W} ${H + 88}" role="img" aria-label="Temperaturverlauf heute, darunter Bewölkung in Prozent und Sichtweite in Kilometern">${grid}
     <path d="${area}" fill="var(--temp)" opacity=".14"/>
     <path d="${line}" fill="none" stroke="var(--temp)" stroke-width="2.5" stroke-linejoin="round"/>
-    ${xAxis(nowH)}${mark(maxP, -9)}${maxP !== minP ? mark(minP, 17) : ''}</svg>`;
+    ${xAxis(nowH)}${mark(maxP, -9)}${maxP !== minP ? mark(minP, 17) : ''}${clouds}${vis}</svg>`;
 }
 
 function rainChart(hrs, nowH) {

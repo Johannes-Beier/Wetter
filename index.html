@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Wetter Rottweil</title>
 <style>
-:root{--bg:#eef0ec;--surface:#e2e7e0;--ink:#17252e;--mute:#566570;--line:#c9d1ca;--temp:#c4561f;--rain:#2b78a8;color-scheme:light}
-@media (prefers-color-scheme:dark){:root{--bg:#11191f;--surface:#1a252d;--ink:#e6ece9;--mute:#93a3ab;--line:#2a3943;--temp:#ee8a55;--rain:#5db0dc;color-scheme:dark}}
+:root{--bg:#eef0ec;--surface:#e2e7e0;--ink:#17252e;--mute:#566570;--line:#c9d1ca;--temp:#c4561f;--rain:#2b78a8;--wind:#3f7d5c;color-scheme:light}
+@media (prefers-color-scheme:dark){:root{--bg:#11191f;--surface:#1a252d;--ink:#e6ece9;--mute:#93a3ab;--line:#2a3943;--temp:#ee8a55;--rain:#5db0dc;--wind:#7fc19a;color-scheme:dark}}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
 main{max-width:860px;margin:0 auto;padding:32px 20px 48px}
@@ -38,7 +38,8 @@ dt{color:var(--mute)}dd{margin:0;text-align:right;font-variant-numeric:tabular-n
 .chart{margin-bottom:26px}
 .chart h3{font-size:1rem;font-weight:500;margin:0 0 6px}
 .chart h3 small{color:var(--mute);font-weight:400;margin-left:8px}
-svg{width:100%;height:auto;display:block;overflow:visible}
+.chart>div{overflow-x:auto}
+svg{width:100%;min-width:520px;height:auto;display:block}
 svg text{fill:var(--mute);font-size:12px}
 svg .grid{stroke:var(--line);stroke-width:1}
 .msg{color:var(--mute);padding:12px 0}
@@ -66,6 +67,7 @@ footer a{color:inherit}
     <h2>Heute im Verlauf</h2>
     <div class="chart"><h3>Temperatur<small id="tempRange"></small></h3><div id="chartTemp"></div></div>
     <div class="chart"><h3>Niederschlag<small id="rainSum"></small></h3><div id="chartRain"></div></div>
+    <div class="chart"><h3>Wind<small id="windMax"></small></h3><div id="chartWind"></div></div>
   </section>
 
   <section>
@@ -166,6 +168,9 @@ function renderToday(list, today, now) {
   const nowH = hourOf(now) + now.getMinutes() / 60;
   $('chartTemp').innerHTML = tempChart(hrs, nowH);
   $('chartRain').innerHTML = rainChart(hrs, nowH);
+  const gusts = hrs.map(h => h.wind_gust_speed ?? h.wind_speed).filter(v => v != null);
+  $('windMax').textContent = gusts.length ? `Spitzenböe ${num(Math.max(...gusts))} km/h` : '';
+  $('chartWind').innerHTML = windChart(hrs, nowH);
 }
 
 const W = 560, H = 200, PL = 36, PR = 10, PT = 14, PB = 26;
@@ -203,11 +208,27 @@ function rainChart(hrs, nowH) {
     const p = d[2];
     return `<g><title>${d[0]} Uhr: ${p == null ? 'keine Angabe' : p + ' % Regenwahrscheinlichkeit'}</title>
       <rect x="${X(d[0]) - sp / 2 + .75}" y="${y0}" width="${sp - 1.5}" height="22" rx="3" fill="var(--rain)" opacity="${p == null ? .06 : .08 + .6 * p / 100}"/>
-      <text x="${X(d[0])}" y="${y0 + 15}" text-anchor="middle" style="fill:var(--ink);font-size:10px">${p == null ? '–' : p}</text></g>`;
+      <text x="${X(d[0])}" y="${y0 + 15}" text-anchor="middle" style="fill:var(--ink);font-size:9px">${p == null ? '–' : p + '%'}</text></g>`;
   }).join('');
   return `<svg viewBox="0 0 ${W} ${H + 44}" role="img" aria-label="Niederschlag heute in Millimeter pro Stunde, darunter die stündliche Regenwahrscheinlichkeit in Prozent">${grid}${bars}${xAxis(nowH)}
     <text x="${PL}" y="10">mm pro Stunde</text>
     <text x="${PL}" y="${y0 - 5}">Regenwahrscheinlichkeit in %</text>${cells}</svg>`;
+}
+
+function windChart(hrs, nowH) {
+  const data = hrs.map(h => ({ h: hourOf(h.timestamp), v: h.wind_speed, g: h.wind_gust_speed, d: h.wind_direction }));
+  const top = Math.max(10, Math.ceil(Math.max(...data.map(d => Math.max(d.v || 0, d.g || 0))) / 10) * 10);
+  const Y = v => PT + (1 - v / top) * (H - PT - PB);
+  const path = key => data.filter(d => d[key] != null).map((d, i) => `${i ? 'L' : 'M'}${X(d.h).toFixed(1)},${Y(d[key]).toFixed(1)}`).join('');
+  const grid = [0, top / 2, top].map(v => `<line class="grid" x1="${PL}" x2="${W - PR}" y1="${Y(v)}" y2="${Y(v)}"/><text x="${PL - 6}" y="${Y(v) + 4}" text-anchor="end">${v}</text>`).join('');
+  const y0 = H + 16;
+  const arrows = data.map(d => d.d == null ? '' : `<g transform="translate(${X(d.h)},${y0 + 12}) rotate(${d.d + 180})"><title>${d.h} Uhr: Wind aus ${compass(d.d)}, ${num(d.v)} km/h</title><path d="M0,-8L5,6L0,3L-5,6Z" fill="var(--wind)"/></g>`).join('');
+  return `<svg viewBox="0 0 ${W} ${H + 44}" role="img" aria-label="Windgeschwindigkeit heute in km/h, darunter die Windrichtung als Pfeile">${grid}
+    <path d="${path('g')}" fill="none" stroke="var(--wind)" stroke-width="1.5" stroke-dasharray="4 4" opacity=".7"/>
+    <path d="${path('v')}" fill="none" stroke="var(--wind)" stroke-width="2.5" stroke-linejoin="round"/>
+    ${xAxis(nowH)}
+    <text x="${PL}" y="10">km/h (durchgezogen: Wind, gestrichelt: Böen)</text>
+    <text x="${PL}" y="${y0 - 5}">Windrichtung (Pfeil zeigt, wohin der Wind weht)</text>${arrows}</svg>`;
 }
 
 function renderDays(list) {

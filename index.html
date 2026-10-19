@@ -1,130 +1,234 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Wetter Rottweil V2.1</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wetter Rottweil</title>
 <style>
-:root{--bg:#eef2f7;--card:rgba(255,255,255,.7);--txt:#111}
-@media (prefers-color-scheme:dark){
-:root{--bg:#0f172a;--card:rgba(30,41,59,.75);--txt:#f1f5f9}
-}
-body{margin:0;padding:20px;background:var(--bg);color:var(--txt);font-family:system-ui}
-.card{backdrop-filter:blur(12px);background:var(--card);border-radius:18px;padding:16px;margin:12px 0}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px}
-.value{font-size:1.4rem;font-weight:bold}
-.scroll{display:flex;gap:12px;overflow-x:auto;padding:8px 0}
-.hour,.day{min-width:150px;padding:12px;border-radius:14px;background:var(--card)}
-.charts{display:flex;gap:16px;overflow-x:auto}
-.chartbox{min-width:500px;background:var(--card);padding:12px;border-radius:14px}
-.loader{text-align:center;padding:30px}
-.err{color:#dc2626}
+:root{--bg:#eef0ec;--surface:#e2e7e0;--ink:#17252e;--mute:#566570;--line:#c9d1ca;--temp:#c4561f;--rain:#2b78a8;color-scheme:light}
+@media (prefers-color-scheme:dark){:root{--bg:#11191f;--surface:#1a252d;--ink:#e6ece9;--mute:#93a3ab;--line:#2a3943;--temp:#ee8a55;--rain:#5db0dc;color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:860px;margin:0 auto;padding:32px 20px 48px}
+section{margin-top:44px}
+h1,h2{margin:0;font-weight:600}
+h2{font-size:1.15rem;margin-bottom:14px}
+.sub{color:var(--mute);margin:2px 0 0}
+.hero{display:grid;grid-template-columns:auto 1fr;gap:12px 40px;align-items:end;margin-top:24px}
+.temp{font:400 clamp(4.5rem,18vw,7.5rem)/1 Georgia,"Iowan Old Style",serif;letter-spacing:-.03em}
+.cond{font-size:1.3rem;margin-top:6px}
+.cond span{font-size:1.6rem;margin-right:6px}
+dl{display:grid;grid-template-columns:auto 1fr;gap:4px 18px;margin:0}
+dt{color:var(--mute)}dd{margin:0;text-align:right;font-variant-numeric:tabular-nums}
+@media (max-width:560px){.hero{grid-template-columns:1fr}}
+.strip{display:flex;gap:0;overflow-x:auto;border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding-bottom:2px}
+.hour{flex:0 0 64px;text-align:center;padding:10px 0;border-right:1px solid var(--line);font-variant-numeric:tabular-nums}
+.hour:last-child{border-right:0}
+.hour .t{color:var(--mute);font-size:.85rem}
+.hour .i{font-size:1.5rem;line-height:1.6}
+.hour .p{font-size:.8rem;color:var(--rain);min-height:1.2em}
+.hour.now{background:var(--surface)}
+.day{display:grid;grid-template-columns:92px 32px 58px 40px 1fr 40px;gap:8px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
+.day .d{font-weight:500}.day .p{color:var(--rain);font-size:.85rem;text-align:right}
+.day .lo{color:var(--mute);text-align:right}
+.bar{position:relative;height:6px;border-radius:3px;background:var(--surface)}
+.bar i{position:absolute;top:0;bottom:0;border-radius:3px;background:linear-gradient(90deg,var(--rain),var(--temp))}
+.day .desc{grid-column:2/-1;color:var(--mute);font-size:.85rem;margin-top:-6px}
+@media (max-width:480px){.day{grid-template-columns:78px 28px 48px 34px 1fr 34px;gap:6px}}
+.chart{margin-bottom:26px}
+.chart h3{font-size:1rem;font-weight:500;margin:0 0 6px}
+.chart h3 small{color:var(--mute);font-weight:400;margin-left:8px}
+svg{width:100%;height:auto;display:block;overflow:visible}
+svg text{fill:var(--mute);font-size:12px}
+svg .grid{stroke:var(--line);stroke-width:1}
+.msg{color:var(--mute);padding:12px 0}
+button{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:6px 14px;cursor:pointer}
+button:focus-visible{outline:2px solid var(--rain);outline-offset:2px}
+footer{margin-top:48px;color:var(--mute);font-size:.85rem}
+footer a{color:inherit}
 </style>
 </head>
 <body>
-<h1>🌦️ Wetter Rottweil</h1>
-<div id="app"><div class="loader">Lade Wetterdaten...</div></div>
+<main>
+  <header>
+    <h1>Rottweil</h1>
+    <p class="sub" id="stand">Wetterdaten werden geladen …</p>
+  </header>
+
+  <div class="hero" id="current"></div>
+
+  <section>
+    <h2>Nächste 24 Stunden</h2>
+    <div class="strip" id="hours"></div>
+  </section>
+
+  <section>
+    <h2>Heute im Verlauf</h2>
+    <div class="chart"><h3>Temperatur<small id="tempRange"></small></h3><div id="chartTemp"></div></div>
+    <div class="chart"><h3>Niederschlag<small id="rainSum"></small></h3><div id="chartRain"></div></div>
+  </section>
+
+  <section>
+    <h2>7 Tage</h2>
+    <div id="days"></div>
+  </section>
+
+  <footer>Daten: Deutscher Wetterdienst (DWD) über die <a href="https://brightsky.dev" target="_blank" rel="noopener">Bright Sky API</a>.</footer>
+</main>
+
 <script>
-const LAT=48.1678,LON=8.6272;
-const ICONS={
-"clear-day":"☀️","clear-night":"🌙","partly-cloudy-day":"⛅","partly-cloudy-night":"☁️🌙",
-"cloudy":"☁️","fog":"🌫️","rain":"🌧️","sleet":"🌨️","snow":"❄️","wind":"💨","thunderstorm":"⛈️"
+const LAT = 48.1678, LON = 8.6264, TZ = 'Europe/Berlin';
+const API = 'https://api.brightsky.dev';
+
+const ICONS = {
+  'clear-day':['☀️','Sonnig'],'clear-night':['🌙','Klar'],
+  'partly-cloudy-day':['⛅','Teils bewölkt'],'partly-cloudy-night':['☁️','Teils bewölkt'],
+  'cloudy':['☁️','Bewölkt'],'fog':['🌫️','Nebel'],'wind':['💨','Windig'],
+  'rain':['🌧️','Regen'],'sleet':['🌨️','Schneeregen'],'snow':['❄️','Schnee'],
+  'hail':['🌨️','Hagel'],'thunderstorm':['⛈️','Gewitter']
 };
-const icon=i=>ICONS[i]||"🌤️";
-const dir=d=>["N","NO","O","SO","S","SW","W","NW"][Math.round(d/45)%8];
+const ico = k => (ICONS[k] || ['·', 'Unbekannt']);
+const num = (v, d = 0) => v == null ? '–' : Number(v).toFixed(d).replace('.', ',');
+const $ = id => document.getElementById(id);
 
-async function load(){
- try{
-  const start = new Date().toISOString().slice(0,10);
-  const end = new Date(
-    Date.now() + (7 * 24 * 60 * 60 * 1000)
-).toISOString().slice(0,10);
+const dateFmt = new Intl.DateTimeFormat('sv-SE', { timeZone: TZ });
+const hourFmt = new Intl.DateTimeFormat('de-DE', { timeZone: TZ, hour: '2-digit', hourCycle: 'h23' });
+const timeFmt = new Intl.DateTimeFormat('de-DE', { timeZone: TZ, hour: '2-digit', minute: '2-digit' });
+const dayFmt = new Intl.DateTimeFormat('de-DE', { timeZone: TZ, weekday: 'short', day: '2-digit', month: '2-digit' });
+const dayKey = ts => dateFmt.format(new Date(ts));
+const hourOf = ts => parseInt(hourFmt.format(new Date(ts)), 10);
+const compass = deg => deg == null ? '' : ['N','NO','O','SO','S','SW','W','NW'][Math.round(deg / 45) % 8];
 
-
-  const [c,w]=await Promise.all([
-   fetch(`https://api.brightsky.dev/current_weather?lat=${LAT}&lon=${LON}`),
-   fetch(
-  `https://api.brightsky.dev/weather?lat=${LAT}&lon=${LON}&date=${start}&last_date=${end}`
-)
-  ]);
-  const current=await c.json();
-  const weather=await w.json();
-  render(current.weather,weather.weather);
- }catch(e){
-  document.getElementById("app").innerHTML='<div class="err">Fehler beim Laden der Wetterdaten.</div>';
- }
+async function getJSON(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return r.json();
 }
 
-function render(cur,data){
- const next24=data.slice(0,24);
- const days={};
- data.forEach(x=>{
-   const d=x.timestamp.slice(0,10);
-   if(!days[d]) days[d]={temps:[],rain:0,wind:[],pp:[],icons:{}};
-   days[d].temps.push(x.temperature);
-   days[d].rain+=x.precipitation||0;
-   days[d].wind.push(x.wind_speed||0);
-   if(x.precipitation_probability!=null) days[d].pp.push(x.precipitation_probability);
-   days[d].icons[x.icon]=(days[d].icons[x.icon]||0)+1;
- });
- const daily=Object.entries(days).slice(0,7).map(([d,v])=>({
-   date:d,max:Math.max(...v.temps),min:Math.min(...v.temps),
-   rain:v.rain.toFixed(1),
-   wind:(v.wind.reduce((a,b)=>a+b,0)/v.wind.length).toFixed(1),
-   pp:v.pp.length?Math.max(...v.pp):0,
-   icon:Object.entries(v.icons).sort((a,b)=>b[1]-a[1])[0][0]
- }));
-
- document.getElementById("app").innerHTML=`
- <div class="card">
- <h2>${icon(cur.icon)} Aktuelles Wetter</h2>
- <div class="grid">
- <div><div class=value>${cur.temperature}°C</div>Temperatur</div>
- <div><div class=value>${cur.cloud_cover}%</div>Bewölkung</div>
- <div><div class=value>${dir(cur.wind_direction_10||cur.wind_direction)}</div>Windrichtung</div>
- <div><div class=value>${cur.wind_speed_10||cur.wind_speed} km/h</div>Wind</div>
- <div><div class=value>${cur.relative_humidity}%</div>Luftfeuchte</div>
- <div><div class=value>${cur.pressure_msl??'-'} hPa</div>Druck</div>
- </div></div>
-
- <div class="card"><h2>24 Stunden</h2><div class="scroll" id="hours"></div></div>
-
- <div class="card"><h2>Diagramme</h2>
- <div class="charts">
- <div class="chartbox"><canvas id="c1"></canvas></div>
- <div class="chartbox"><canvas id="c2"></canvas></div>
- <div class="chartbox"><canvas id="c3"></canvas></div>
- </div></div>
-
- <div class="card"><h2>7 Tage</h2><div class="scroll" id="days"></div></div>`;
-
- document.getElementById("hours").innerHTML=next24.map(h=>`
- <div class=hour>
- <div>${new Date(h.timestamp).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})}</div>
- <div style="font-size:2rem">${icon(h.icon)}</div>
- <div>${h.temperature}°C</div>
- <div>💧 ${h.precipitation||0} mm</div>
- </div>`).join('');
-
- document.getElementById("days").innerHTML=daily.map(d=>`
- <div class=day>
- <div>${new Date(d.date).toLocaleDateString('de-DE',{weekday:'short',day:'2-digit',month:'2-digit'})}</div>
- <div style="font-size:2rem">${icon(d.icon)}</div>
- <div>⬆️ ${d.max.toFixed(1)}°C</div>
- <div>⬇️ ${d.min.toFixed(1)}°C</div>
- <div>🌧️ ${d.rain} mm</div>
- <div>💨 ${d.wind} km/h</div>
- <div>☔ ${d.pp}%</div>
- </div>`).join('');
-
- const labels=next24.map(x=>new Date(x.timestamp).getHours()+':00');
- new Chart(document.getElementById('c1'),{type:'line',data:{labels,datasets:[{label:'Temperatur',data:next24.map(x=>x.temperature)}]}});
- new Chart(document.getElementById('c2'),{type:'bar',data:{labels,datasets:[{label:'Niederschlag',data:next24.map(x=>x.precipitation||0)}]}});
- new Chart(document.getElementById('c3'),{type:'line',data:{labels,datasets:[{label:'Wind',data:next24.map(x=>x.wind_speed||0)}]}});
+async function load() {
+  $('stand').textContent = 'Wetterdaten werden geladen …';
+  const now = new Date();
+  const today = dateFmt.format(now);
+  const end = dateFmt.format(new Date(now.getTime() + 7 * 864e5));
+  const q = `lat=${LAT}&lon=${LON}&tz=${TZ}`;
+  try {
+    const [cur, fc] = await Promise.all([
+      getJSON(`${API}/current_weather?${q}`),
+      getJSON(`${API}/weather?${q}&date=${today}&last_date=${end}`)
+    ]);
+    renderCurrent(cur.weather);
+    renderHours(fc.weather, now);
+    renderToday(fc.weather, today, now);
+    renderDays(fc.weather);
+  } catch (e) {
+    $('stand').innerHTML = 'Die Wetterdaten konnten nicht geladen werden. <button id="retry">Erneut versuchen</button>';
+    $('retry').onclick = load;
+    console.error(e);
+  }
 }
+
+function renderCurrent(w) {
+  const [emoji, label] = ico(w.icon);
+  $('stand').textContent = `Aktuell, Stand ${timeFmt.format(new Date(w.timestamp))} Uhr`;
+  $('current').innerHTML = `
+    <div>
+      <div class="temp">${num(w.temperature, 1)}°</div>
+      <div class="cond"><span>${emoji}</span>${label}</div>
+    </div>
+    <dl>
+      <dt>Wind</dt><dd>${num(w.wind_speed_10)} km/h ${compass(w.wind_direction_10)}</dd>
+      <dt>Böen</dt><dd>${num(w.wind_gust_speed_10)} km/h</dd>
+      <dt>Luftfeuchte</dt><dd>${num(w.relative_humidity)} %</dd>
+      <dt>Bewölkung</dt><dd>${num(w.cloud_cover)} %</dd>
+      <dt>Niederschlag</dt><dd>${num(w.precipitation_60, 1)} mm/h</dd>
+      <dt>Luftdruck</dt><dd>${num(w.pressure_msl)} hPa</dd>
+    </dl>`;
+}
+
+function renderHours(list, now) {
+  const start = now.getTime() - 3600e3;
+  const next = list.filter(h => new Date(h.timestamp).getTime() > start).slice(0, 24);
+  $('hours').innerHTML = next.map((h, i) => `
+    <div class="hour${i === 0 ? ' now' : ''}" title="${ico(h.icon)[1]}">
+      <div class="t">${i === 0 ? 'Jetzt' : hourOf(h.timestamp) + ' Uhr'}</div>
+      <div class="i">${ico(h.icon)[0]}</div>
+      <div>${num(h.temperature)}°</div>
+      <div class="p">${h.precipitation > 0 ? num(h.precipitation, 1) + ' mm' : ''}</div>
+    </div>`).join('');
+}
+
+function renderToday(list, today, now) {
+  const hrs = list.filter(h => dayKey(h.timestamp) === today);
+  const temps = hrs.map(h => h.temperature).filter(v => v != null);
+  const rain = hrs.map(h => h.precipitation || 0);
+  $('tempRange').textContent = `${num(Math.min(...temps))}° bis ${num(Math.max(...temps))}°`;
+  $('rainSum').textContent = `${num(rain.reduce((a, b) => a + b, 0), 1)} mm gesamt`;
+  const nowH = hourOf(now) + now.getMinutes() / 60;
+  $('chartTemp').innerHTML = tempChart(hrs, nowH);
+  $('chartRain').innerHTML = rainChart(hrs, nowH);
+}
+
+const W = 560, H = 200, PL = 36, PR = 10, PT = 14, PB = 26;
+const X = h => PL + (h / 23) * (W - PL - PR);
+const xAxis = nowH => {
+  let s = '';
+  for (let h = 0; h <= 21; h += 3) s += `<text x="${X(h)}" y="${H - 6}" text-anchor="middle">${h}</text>`;
+  return s + `<line x1="${X(nowH)}" x2="${X(nowH)}" y1="${PT}" y2="${H - PB}" stroke="var(--ink)" stroke-dasharray="3 4" opacity=".5"/>`;
+};
+
+function tempChart(hrs, nowH) {
+  const pts = hrs.filter(h => h.temperature != null).map(h => [hourOf(h.timestamp), h.temperature]);
+  const lo = Math.floor(Math.min(...pts.map(p => p[1]))) - 1, hi = Math.ceil(Math.max(...pts.map(p => p[1]))) + 1;
+  const Y = t => PT + (1 - (t - lo) / (hi - lo)) * (H - PT - PB);
+  const line = pts.map((p, i) => `${i ? 'L' : 'M'}${X(p[0]).toFixed(1)},${Y(p[1]).toFixed(1)}`).join('');
+  const area = `${line}L${X(pts[pts.length - 1][0])},${H - PB}L${X(pts[0][0])},${H - PB}Z`;
+  const grid = [lo, (lo + hi) / 2, hi].map(t => `<line class="grid" x1="${PL}" x2="${W - PR}" y1="${Y(t)}" y2="${Y(t)}"/><text x="${PL - 6}" y="${Y(t) + 4}" text-anchor="end">${Math.round(t)}°</text>`).join('');
+  const maxP = pts.reduce((a, b) => b[1] > a[1] ? b : a), minP = pts.reduce((a, b) => b[1] < a[1] ? b : a);
+  const mark = (p, dy) => `<circle cx="${X(p[0])}" cy="${Y(p[1])}" r="3.5" fill="var(--temp)"/><text x="${X(p[0])}" y="${Y(p[1]) + dy}" text-anchor="middle" style="fill:var(--ink)">${num(p[1], 1)}°</text>`;
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Temperaturverlauf heute">${grid}
+    <path d="${area}" fill="var(--temp)" opacity=".14"/>
+    <path d="${line}" fill="none" stroke="var(--temp)" stroke-width="2.5" stroke-linejoin="round"/>
+    ${xAxis(nowH)}${mark(maxP, -9)}${maxP !== minP ? mark(minP, 17) : ''}</svg>`;
+}
+
+function rainChart(hrs, nowH) {
+  const data = hrs.map(h => [hourOf(h.timestamp), h.precipitation || 0]);
+  const top = Math.max(1, Math.ceil(Math.max(...data.map(d => d[1]))));
+  const Y = v => PT + (1 - v / top) * (H - PT - PB);
+  const bw = (W - PL - PR) / 24 * .7;
+  const grid = [0, top / 2, top].map(v => `<line class="grid" x1="${PL}" x2="${W - PR}" y1="${Y(v)}" y2="${Y(v)}"/><text x="${PL - 6}" y="${Y(v) + 4}" text-anchor="end">${num(v, v % 1 ? 1 : 0)}</text>`).join('');
+  const bars = data.map(d => d[1] > 0 ? `<rect x="${X(d[0]) - bw / 2}" y="${Y(d[1])}" width="${bw}" height="${H - PB - Y(d[1])}" rx="2" fill="var(--rain)"><title>${d[0]} Uhr: ${num(d[1], 1)} mm</title></rect>` : '').join('');
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Niederschlag heute in Millimeter pro Stunde">${grid}${bars}${xAxis(nowH)}
+    <text x="${PL}" y="10">mm pro Stunde</text></svg>`;
+}
+
+function renderDays(list) {
+  const groups = {};
+  list.forEach(h => (groups[dayKey(h.timestamp)] ||= []).push(h));
+  const days = Object.keys(groups).sort().slice(0, 7).map(k => {
+    const hs = groups[k];
+    const t = hs.map(h => h.temperature).filter(v => v != null);
+    const mid = hs.reduce((a, b) => Math.abs(hourOf(b.timestamp) - 14) < Math.abs(hourOf(a.timestamp) - 14) ? b : a);
+    return {
+      key: k, ts: mid.timestamp, min: Math.min(...t), max: Math.max(...t),
+      rain: hs.reduce((a, h) => a + (h.precipitation || 0), 0),
+      icon: (mid.icon || '').replace('night', 'day')
+    };
+  });
+  const gMin = Math.min(...days.map(d => d.min)), gMax = Math.max(...days.map(d => d.max)), span = Math.max(1, gMax - gMin);
+  $('days').innerHTML = days.map((d, i) => `
+    <div class="day">
+      <div class="d">${i === 0 ? 'Heute' : dayFmt.format(new Date(d.ts))}</div>
+      <div title="${ico(d.icon)[1]}">${ico(d.icon)[0]}</div>
+      <div class="p">${d.rain >= 0.1 ? num(d.rain, 1) + ' mm' : ''}</div>
+      <div class="lo">${num(d.min)}°</div>
+      <div class="bar"><i style="left:${(d.min - gMin) / span * 100}%;right:${100 - (d.max - gMin) / span * 100}%"></i></div>
+      <div>${num(d.max)}°</div>
+    </div>`).join('');
+}
+
 load();
-setInterval(load,900000);
+setInterval(load, 15 * 60 * 1000);
 </script>
 </body>
 </html>

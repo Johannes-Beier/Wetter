@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Wetter Rottweil</title>
 <style>
-:root{--bg:#eef0ec;--surface:#e2e7e0;--ink:#17252e;--mute:#566570;--line:#c9d1ca;--temp:#c4561f;--rain:#2b78a8;--wind:#3f7d5c;color-scheme:light}
-@media (prefers-color-scheme:dark){:root{--bg:#11191f;--surface:#1a252d;--ink:#e6ece9;--mute:#93a3ab;--line:#2a3943;--temp:#ee8a55;--rain:#5db0dc;--wind:#7fc19a;color-scheme:dark}}
+:root{--bg:#eef0ec;--surface:#e2e7e0;--ink:#17252e;--mute:#566570;--line:#c9d1ca;--temp:#c4561f;--rain:#2b78a8;--wind:#3f7d5c;--vis:#7a58a8;color-scheme:light}
+@media (prefers-color-scheme:dark){:root{--bg:#11191f;--surface:#1a252d;--ink:#e6ece9;--mute:#93a3ab;--line:#2a3943;--temp:#ee8a55;--rain:#5db0dc;--wind:#7fc19a;--vis:#b69ce3;color-scheme:dark}}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
 main{max-width:860px;margin:0 auto;padding:32px 20px 48px}
@@ -39,7 +39,7 @@ dt{color:var(--mute)}dd{margin:0;text-align:right;font-variant-numeric:tabular-n
 .chart h3{font-size:1rem;font-weight:500;margin:0 0 6px}
 .chart h3 small{color:var(--mute);font-weight:400;margin-left:8px}
 .chart>div{overflow-x:auto}
-svg{width:100%;min-width:520px;height:auto;display:block}
+svg{width:100%;min-width:560px;height:auto;display:block}
 svg text{fill:var(--mute);font-size:12px}
 svg .grid{stroke:var(--line);stroke-width:1}
 .msg{color:var(--mute);padding:12px 0}
@@ -173,7 +173,7 @@ function renderToday(list, today, now) {
   $('chartWind').innerHTML = windChart(hrs, nowH);
 }
 
-const W = 560, H = 200, PL = 36, PR = 10, PT = 14, PB = 26;
+const W = 600, H = 200, PL = 36, PR = 44, PT = 14, PB = 26;
 const X = h => PL + (h / 23) * (W - PL - PR);
 const xAxis = nowH => {
   let s = '';
@@ -190,17 +190,19 @@ function tempChart(hrs, nowH) {
   const grid = [lo, (lo + hi) / 2, hi].map(t => `<line class="grid" x1="${PL}" x2="${W - PR}" y1="${Y(t)}" y2="${Y(t)}"/><text x="${PL - 6}" y="${Y(t) + 4}" text-anchor="end">${Math.round(t)}°</text>`).join('');
   const maxP = pts.reduce((a, b) => b[1] > a[1] ? b : a), minP = pts.reduce((a, b) => b[1] < a[1] ? b : a);
   const mark = (p, dy) => `<circle cx="${X(p[0])}" cy="${Y(p[1])}" r="3.5" fill="var(--temp)"/><text x="${X(p[0])}" y="${Y(p[1]) + dy}" text-anchor="middle" style="fill:var(--ink)">${num(p[1], 1)}°</text>`;
-  const sp = (W - PL - PR) / 23;
-  const strip = (y, label, key, fmt, unit, op) => `<text x="${PL}" y="${y - 5}">${label}</text>` + hrs.map(h => {
-    const v = h[key], x = X(hourOf(h.timestamp));
-    return `<g><title>${hourOf(h.timestamp)} Uhr: ${v == null ? 'keine Angabe' : fmt(v) + ' ' + unit}</title><rect x="${x - sp / 2 + .75}" y="${y}" width="${sp - 1.5}" height="22" rx="3" fill="var(--mute)" opacity="${v == null ? .06 : .08 + .5 * op(v)}"/><text x="${x}" y="${y + 15}" text-anchor="middle" style="fill:var(--ink);font-size:9px">${v == null ? '–' : fmt(v)}</text></g>`;
-  }).join('');
-  const clouds = strip(H + 16, 'Bewölkung in %', 'cloud_cover', v => Math.round(v) + '%', '', v => v / 100);
-  const vis = strip(H + 59, 'Sichtweite in km (dunkler = schlechtere Sicht)', 'visibility', v => v >= 10000 ? Math.round(v / 1000) : num(v / 1000, 1), 'km', v => 1 - Math.min(v / 10000, 1));
-  return `<svg viewBox="0 0 ${W} ${H + 88}" role="img" aria-label="Temperaturverlauf heute, darunter Bewölkung in Prozent und Sichtweite in Kilometern">${grid}
+  const vp = hrs.filter(h => h.visibility != null).map(h => [hourOf(h.timestamp), h.visibility / 1000]);
+  const vTop = Math.max(10, Math.ceil(Math.max(0, ...vp.map(p => p[1])) / 10) * 10);
+  const YV = k => PT + (1 - k / vTop) * (H - PT - PB);
+  const vLine = vp.map((p, i) => `${i ? 'L' : 'M'}${X(p[0]).toFixed(1)},${YV(p[1]).toFixed(1)}`).join('');
+  const vis = vp.length ? `<path d="${vLine}" fill="none" stroke="var(--vis)" stroke-width="2" stroke-linejoin="round"/>`
+    + vp.map(p => `<circle cx="${X(p[0])}" cy="${YV(p[1])}" r="6" fill="transparent"><title>${p[0]} Uhr: ${num(p[1], 1)} km Sichtweite</title></circle>`).join('')
+    + [0, vTop / 2, vTop].map(k => `<text x="${W - PR + 6}" y="${YV(k) + 4}" style="fill:var(--vis)">${k}</text>`).join('')
+    + `<text x="${W - PR}" y="10" text-anchor="end" style="fill:var(--vis)">Sichtweite in km</text>` : '';
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Temperaturverlauf heute in Grad Celsius und Sichtweite in Kilometern">${grid}
     <path d="${area}" fill="var(--temp)" opacity=".14"/>
     <path d="${line}" fill="none" stroke="var(--temp)" stroke-width="2.5" stroke-linejoin="round"/>
-    ${xAxis(nowH)}${mark(maxP, -9)}${maxP !== minP ? mark(minP, 17) : ''}${clouds}${vis}</svg>`;
+    ${vis}${xAxis(nowH)}${mark(maxP, -9)}${maxP !== minP ? mark(minP, 17) : ''}
+    <text x="${PL}" y="10" style="fill:var(--temp)">Temperatur in °C</text></svg>`;
 }
 
 function rainChart(hrs, nowH) {
@@ -209,6 +211,14 @@ function rainChart(hrs, nowH) {
   const Y = v => PT + (1 - v / top) * (H - PT - PB);
   const bw = (W - PL - PR) / 24 * .7;
   const grid = [0, top / 2, top].map(v => `<line class="grid" x1="${PL}" x2="${W - PR}" y1="${Y(v)}" y2="${Y(v)}"/><text x="${PL - 6}" y="${Y(v) + 4}" text-anchor="end">${num(v, v % 1 ? 1 : 0)}</text>`).join('');
+  const cp = hrs.filter(h => h.cloud_cover != null).map(h => [hourOf(h.timestamp), h.cloud_cover]);
+  const YC = c => PT + (1 - c / 100) * (H - PT - PB);
+  const cLine = cp.map((p, i) => `${i ? 'L' : 'M'}${X(p[0]).toFixed(1)},${YC(p[1]).toFixed(1)}`).join('');
+  const clouds = cp.length ? `<path d="${cLine}L${X(cp[cp.length - 1][0])},${H - PB}L${X(cp[0][0])},${H - PB}Z" fill="var(--mute)" opacity=".13"/>` : '';
+  const cOver = cp.length ? `<path d="${cLine}" fill="none" stroke="var(--mute)" stroke-width="2" stroke-linejoin="round"/>`
+    + cp.map(p => `<circle cx="${X(p[0])}" cy="${YC(p[1])}" r="6" fill="transparent"><title>${p[0]} Uhr: ${Math.round(p[1])} % Bewölkung</title></circle>`).join('')
+    + [0, 50, 100].map(c => `<text x="${W - PR + 6}" y="${YC(c) + 4}">${c}%</text>`).join('')
+    + `<text x="${W - PR}" y="10" text-anchor="end">Bewölkung in %</text>` : '';
   const bars = data.map(d => d[1] > 0 ? `<rect x="${X(d[0]) - bw / 2}" y="${Y(d[1])}" width="${bw}" height="${H - PB - Y(d[1])}" rx="2" fill="var(--rain)"><title>${d[0]} Uhr: ${num(d[1], 1)} mm</title></rect>` : '').join('');
   const sp = (W - PL - PR) / 23, y0 = H + 16;
   const cells = data.map(d => {
@@ -217,7 +227,7 @@ function rainChart(hrs, nowH) {
       <rect x="${X(d[0]) - sp / 2 + .75}" y="${y0}" width="${sp - 1.5}" height="22" rx="3" fill="var(--rain)" opacity="${p == null ? .06 : .08 + .6 * p / 100}"/>
       <text x="${X(d[0])}" y="${y0 + 15}" text-anchor="middle" style="fill:var(--ink);font-size:9px">${p == null ? '–' : p + '%'}</text></g>`;
   }).join('');
-  return `<svg viewBox="0 0 ${W} ${H + 44}" role="img" aria-label="Niederschlag heute in Millimeter pro Stunde, darunter die stündliche Regenwahrscheinlichkeit in Prozent">${grid}${bars}${xAxis(nowH)}
+  return `<svg viewBox="0 0 ${W} ${H + 44}" role="img" aria-label="Niederschlag heute in Millimeter pro Stunde und Bewölkung in Prozent, darunter die stündliche Regenwahrscheinlichkeit">${grid}${clouds}${bars}${cOver}${xAxis(nowH)}
     <text x="${PL}" y="10">mm pro Stunde</text>
     <text x="${PL}" y="${y0 - 5}">Regenwahrscheinlichkeit in %</text>${cells}</svg>`;
 }
